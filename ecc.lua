@@ -42,14 +42,42 @@
 		end
 	end
 
+	-- Flags premake's toolsets emit as "<flag> <path>" in a single string. In a
+	-- Makefile that's fine — the shell re-tokenizes — but compile_commands.json
+	-- treats each array entry as one verbatim argv slot, so clangd otherwise looks
+	-- up a path that begins with a literal space. Split these into two tokens.
+	local two_token_flags = {
+		["-isystem"] = true,
+		["-iquote"] = true,
+		["-iframework"] = true,
+		["-isysroot"] = true,
+		["-include"] = true,
+		["-imacros"] = true,
+		["-idirafter"] = true,
+	}
+
+	local function jsonEscape(s)
+		-- Escape backslashes first so existing escapes (e.g. -DVERSION=\"x.y.z\")
+		-- aren't double-mangled when we then escape the embedded quotes.
+		return s:gsub("\\", "\\\\"):gsub("\"", "\\\"")
+	end
+
 	function m.writeArgs(args, obj, src)
 		for _,arg in ipairs(args) do
 			-- Defines like the following will break JSON format, quotes need to be escaped
 			-- -DEXPORT_API=__attribute__((visibility("default")))
-			-- Escape backslashes first so existing escapes (e.g. -DVERSION=\"x.y.z\")
-			-- aren't double-mangled when we then escape the embedded quotes.
-			local escaped = arg:gsub("\\", "\\\\"):gsub("\"", "\\\"")
-			p.w("\"%s\",", escaped)
+			local space_idx = arg:find(" ", 1, true)
+			local first = space_idx and arg:sub(1, space_idx - 1) or nil
+			if first and two_token_flags[first] then
+				local rest = arg:sub(space_idx + 1)
+				if #rest >= 2 and rest:sub(1, 1) == "\"" and rest:sub(-1) == "\"" then
+					rest = rest:sub(2, -2)
+				end
+				p.w("\"%s\",", first)
+				p.w("\"%s\",", jsonEscape(rest))
+			else
+				p.w("\"%s\",", jsonEscape(arg))
+			end
 		end
 		p.w("\"-c\",")
 		p.w("\"-o\",")
