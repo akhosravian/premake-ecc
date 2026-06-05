@@ -46,7 +46,9 @@
 		for _,arg in ipairs(args) do
 			-- Defines like the following will break JSON format, quotes need to be escaped
 			-- -DEXPORT_API=__attribute__((visibility("default")))
-			local escaped = arg:gsub("\"", "\\\"")
+			-- Escape backslashes first so existing escapes (e.g. -DVERSION=\"x.y.z\")
+			-- aren't double-mangled when we then escape the embedded quotes.
+			local escaped = arg:gsub("\\", "\\\\"):gsub("\"", "\\\"")
 			p.w("\"%s\",", escaped)
 		end
 		p.w("\"-c\",")
